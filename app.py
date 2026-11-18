@@ -1,5 +1,6 @@
-
+import streamlit as st
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC
@@ -8,7 +9,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import mean_absolute_error, accuracy_score
 
-# Generate random student data
+st.set_page_config(page_title="Student Marks Predictor",
+                   page_icon="📚")
+
+st.title("📚 Student Marks Predictor")
+st.write("Predict student performance using Machine Learning.")
+
+# Generate random data
 np.random.seed(10)
 n = 100
 
@@ -16,15 +23,14 @@ hours = np.random.randint(1, 9, n)
 attendance = np.random.randint(50, 101, n)
 previous = np.random.randint(30, 91, n)
 
-noise = np.random.normal(0, 5, n)
 marks = np.clip(5*hours + 0.25*attendance +
-                 0.35*previous + noise, 0, 100)
+                0.35*previous +
+                np.random.normal(0, 5, n), 0, 100)
 
 X = np.column_stack((hours, attendance, previous))
 y = marks
 passed = (marks >= 40).astype(int)
 
-# Split data
 X_train, X_test, y_train, y_test, p_train, p_test = train_test_split(
     X, y, passed, test_size=0.2, random_state=42
 )
@@ -34,49 +40,75 @@ lr = LinearRegression()
 lr.fit(X_train, y_train)
 pred = lr.predict(X_test)
 
-print("Linear Regression MAE:",
-      round(mean_absolute_error(y_test, pred), 2))
-
 # Logistic Regression
-log_model = make_pipeline(
-    StandardScaler(), LogisticRegression(random_state=10)
-)
-log_model.fit(X_train, p_train)
+log = make_pipeline(StandardScaler(),
+                    LogisticRegression())
+log.fit(X_train, p_train)
 
-print("Logistic Regression Accuracy:",
-      round(accuracy_score(p_test, log_model.predict(X_test))*100, 2), "%")
+# SVM
+svm = make_pipeline(StandardScaler(),
+                    SVC(kernel="linear"))
+svm.fit(X_train, p_train)
 
-# Support Vector Machine
-svm_model = make_pipeline(
-    StandardScaler(), SVC(kernel="linear")
-)
-svm_model.fit(X_train, p_train)
+# K-Means
+km = KMeans(n_clusters=3, random_state=10, n_init=10)
+km.fit(X)
 
-print("SVM Accuracy:",
-      round(accuracy_score(p_test, svm_model.predict(X_test))*100, 2), "%")
+st.subheader("Enter Student Details")
 
-# K-Means Clustering
-kmeans = KMeans(n_clusters=3, random_state=10, n_init=10)
-kmeans.fit(X)
+h = st.slider("Study Hours per Day", 1, 8, 5)
+a = st.slider("Attendance (%)", 50, 100, 80)
+p = st.slider("Previous Marks", 30, 90, 65)
 
-print("K-Means: Students divided into",
-      len(np.unique(kmeans.labels_)), "groups")
+if st.button("Predict Marks"):
+    student = np.array([[h, a, p]])
 
-# Predict marks for a new student
-new_student = np.array([[5, 80, 65]])
+    result = lr.predict(student)[0]
+    logistic = log.predict(student)[0]
+    support = svm.predict(student)[0]
+    group = km.predict(student)[0] + 1
 
-predicted_marks = lr.predict(new_student)[0]
-pass_result = log_model.predict(new_student)[0]
-svm_result = svm_model.predict(new_student)[0]
-group = kmeans.predict(new_student)[0] + 1
+    st.subheader("Prediction Results")
 
-print("\nNew Student Details:")
-print("Study Hours: 5")
-print("Attendance: 80%")
-print("Previous Marks: 65")
+    st.metric("Predicted Marks", str(round(result, 2)) + " / 100")
 
-print("Predicted Marks:", round(predicted_marks, 2), "/ 100")
-print("Logistic Regression Result:",
-      "Pass" if pass_result == 1 else "Fail")
-print("SVM Result:", "Pass" if svm_result == 1 else "Fail")
-print("K-Means Student Group:", group)
+    if logistic == 1:
+        st.success("Logistic Regression: PASS")
+    else:
+        st.error("Logistic Regression: FAIL")
+
+    st.write("SVM Result:",
+             "PASS" if support == 1 else "FAIL")
+
+    st.write("Student Group:", group)
+
+    st.progress(int(np.clip(result, 0, 100)))
+
+st.divider()
+
+st.subheader("Model Performance")
+
+c1, c2 = st.columns(2)
+
+c1.metric("Linear Regression MAE",
+          round(mean_absolute_error(y_test, pred), 2))
+
+c2.metric("Logistic Accuracy",
+          str(round(accuracy_score(
+              p_test, log.predict(X_test))*100, 2)) + "%")
+
+st.write("SVM Accuracy:",
+         round(accuracy_score(
+             p_test, svm.predict(X_test))*100, 2), "%")
+
+st.subheader("Random Student Dataset")
+
+df = pd.DataFrame({
+    "Study Hours": hours,
+    "Attendance": attendance,
+    "Previous Marks": previous,
+    "Final Marks": np.round(marks, 2)
+})
+
+st.dataframe(df.head(10), use_container_width=True)
+  
